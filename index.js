@@ -15,8 +15,8 @@ const { notFound, errorHandler } = require('./middlewares')
 const config = require('./utils/config')
 const { configurePassportJwt } = require('./oidc/passportConfig')
 
-const forceSSL = config.FORCE_SSL === 'true'
-const PORT = config.PORT || 8000
+const forceSSL = process.env.FORCE_SSL === 'true'
+const PORT = process.env.PORT || config.PORT
 
 // express app
 const app = express()
