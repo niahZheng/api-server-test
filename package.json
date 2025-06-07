@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "develop": "nodemon server",
-    "start": "cross-env NODE_ENV=production node index"
+    "start": "NODE_ENV=production node index"
   },
   "dependencies": {
     "@socket.io/admin-ui": "^0.5.1",
