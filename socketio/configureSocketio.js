@@ -81,7 +81,7 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
 
         // celeryMessage is emitted from python celery workers who complete a task
         // the data is routed to a specific agent's room
-        socket.on("celeryMessage", (data) => {
+        socket.on("celeryMessage", (data, callback) => {
             debug('received a message on /celery');
             try {
                 // seems like data is already an object, no need to parse
@@ -90,12 +90,19 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
                 debug(`Emitting message to room ${agent_id} on Socket ${socket.id}`);
                 // Emits the message to the correct room "agent_id"
                 io.to(agent_id).emit('celeryMessage', data);
+                
+                // 调用回调函数，通知客户端消息已处理
+                if (callback) {
+                    callback({ status: 'ok', message: 'Message processed successfully' });
+                }
             } catch (error) {
                 // Handle parsing error
                 console.error('Error parsing JSON:', error);
                 // io.emit('celeryMessage', data)
+                if (callback) {
+                    callback({ status: 'error', message: error.message });
+                }
             }
-
         });
         socket.onAny((eventName, ...args) => {
             debug(`received ${eventName} in /celery`)

@@ -16,7 +16,7 @@ const config = require('./utils/config')
 const { configurePassportJwt } = require('./oidc/passportConfig')
 
 const forceSSL = process.env.FORCE_SSL === 'true'
-const PORT = process.env.PORT || config.PORT
+const PORT = process.env.PORT || config.PORT || 8000
 
 // express app
 const app = express()
