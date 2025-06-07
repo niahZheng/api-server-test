@@ -10,9 +10,11 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
     // this would be like ws://localhost:8000/socket.io
     io = socketIO(server, {
         path: '/socket.io',
-        // cors: {
-        //   origin: ["http://localhost:8000", "http://localhost:3003"], // Allow multiple origins
-        // }
+        cors: {
+            origin: "*", // 允许所有域名访问
+            methods: ["GET", "POST"],
+            credentials: true
+        }
     });
     if (authenticateRequests) {
         debug('IO Engine will authenticateRequests')
