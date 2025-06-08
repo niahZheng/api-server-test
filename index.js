@@ -1,4 +1,3 @@
-
 // import env
 require('dotenv-expand')(require('dotenv').config())
 
@@ -92,7 +91,8 @@ if (config.SOCKETIO_DB_URI) {
   // pool = require('./socketio/configurePool')
 //  io = configureSocketIo(server, pool, authenticateRequestsSocketIo)
 }
-io = configureSocketIo(server, pool, authenticateRequestsSocketIo)
+// 禁用认证
+io = configureSocketIo(server, pool, null)
 
 // TODO add more socketio code for verifying authentication
 
