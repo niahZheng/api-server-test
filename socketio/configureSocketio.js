@@ -175,21 +175,35 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
                 // 解析消息数据
                 const messageData = typeof data === 'string' ? JSON.parse(data) : data;
                 
+                // 解析 payloadString
+                let payload;
+                if (messageData.payloadString) {
+                    try {
+                        payload = JSON.parse(messageData.payloadString);
+                    } catch (e) {
+                        console.error('Error parsing payloadString:', e);
+                        return;
+                    }
+                } else {
+                    payload = messageData;
+                }
+
                 // 检查必要的字段
-                if (!messageData.conversationid) {
-                    console.error('Missing conversationid in message:', messageData);
+                if (!payload.conversationid) {
+                    console.error('Missing conversationid in payload:', payload);
                     return;
                 }
 
                 console.log('Message data:', {
-                    conversationid: messageData.conversationid,
-                    type: messageData.type,
-                    parameters: messageData.parameters
+                    conversationid: payload.conversationid,
+                    type: payload.type,
+                    parameters: payload.parameters,
+                    destinationName: messageData.destinationName
                 });
 
-                console.log(`Emitting message to room ${messageData.conversationid} on Socket ${socket.id}`);
+                console.log(`Emitting message to room ${payload.conversationid} on Socket ${socket.id}`);
                 // Emits the message to the correct room "conversationid"
-                io.to(messageData.conversationid).emit('celeryMessage', messageData);
+                io.to(payload.conversationid).emit('celeryMessage', payload);
             } catch (error) {
                 console.error('Error processing celeryMessage:', error);
                 console.error('Raw message data:', data);
