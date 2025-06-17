@@ -21,7 +21,6 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
     instrument(io, {
         auth: false,  // 禁用认证
         mode: "development",
-        namespaceName: "/celery",  // 监控 /celery 命名空间
         readonly: false,
         serverId: "api-server"
     });
@@ -37,13 +36,12 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
         }));
     }
 
-
     // Handle client connections
     io.on('connection', (socket) => {
         // 加入房间
         socket.on('joinRoom', (roomName, callback) => {
             try {
-                console.log(`\n=== Joining Room in /celery namespace ===`);
+                console.log(`\n=== Joining Room ===`);
                 console.log(`Socket ${socket.id} attempting to join room ${roomName}`);
 
                 // 确保房间名称不包含引号
@@ -65,7 +63,7 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
 
                 console.log(`Socket ${socket.id} joined room ${cleanRoomName}`);
                 console.log('Current rooms after join:', currentRooms);
-                console.log('All rooms in server:', Array.from(io.sockets.adapter.rooms.keys()));
+                console.log('All rooms:', Array.from(io.sockets.adapter.rooms.keys()));
                 console.log('===============================\n');
 
                 if (typeof callback === 'function') {
@@ -89,6 +87,7 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
                 }
             }
         });
+
         // Handle custom events from web UI
         // Like next best action clicks
         socket.on('webUiMessage', (data) => {
@@ -113,24 +112,6 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
                 .applyAsync([parsed.destination, JSON.stringify(payload)]);
         });
 
-        // Handle disconnection
-        socket.on('disconnect', () => {
-            console.log('\n=== Client Disconnected ===');
-            console.log('Socket ID:', socket.id);
-            console.log('===========================\n');
-        });
-
-        socket.onAny((eventName, ...args) => {
-            // console.log(`\n=== Received Event ===`, eventName);
-            // console.log('Event:');
-            // console.log('Socket ID:', socket.id);
-            // console.log('===========================\n');
-        });
-    });
-
-    // 在 /celery 命名空间中处理所有房间相关的操作
-    io.of("/celery").on("connection", (socket) => {
-
         // 获取当前所有房间
         socket.on('getRooms', (callback) => {
             const rooms = Array.from(io.sockets.adapter.rooms.keys());
@@ -140,12 +121,10 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
             }
         });
 
-
-
         // 离开房间
         socket.on('leaveRoom', (roomName, callback) => {
             try {
-                console.log(`\n=== Leaving Room in /celery ===`);
+                console.log(`\n=== Leaving Room ===`);
                 console.log(`Socket ${socket.id} attempting to leave room ${roomName}`);
                 socket.leave(roomName);
 
@@ -183,23 +162,9 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
             console.log('\n=== Received celeryMessage ===');
             console.log('Socket ID:', socket.id);
             try {
-
-                // 解析消息
-                const messageData = JSON.parse(data.payloadString);
-                const conversationid = messageData.conversationid;
-
-                // 打印解析后的消息体
-                console.log('\n =================== Message Body ===================');
-                console.log('Conversation ID:', conversationid);
-                console.log('Message Type:', messageData.type);
-                if (messageData.parameters) {
-                    console.log('Parameters:', JSON.stringify(messageData.parameters, null, 2));
-                }
-                console.log('====================================================\n');
-
-                console.log(`Emitting message to room ${conversationid} on Socket ${socket.id}`);
+                console.log(`Emitting message to room ${data.conversationid} on Socket ${socket.id}`);
                 // Emits the message to the correct room "conversationid"
-                io.to(conversationid).emit('celeryMessage', data);
+                io.to(data.conversationid).emit('celeryMessage', data);
             } catch (error) {
                 console.error('Error parsing JSON:', error);
             }
@@ -210,7 +175,7 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
 
         // Handle disconnection
         socket.on('disconnect', (reason) => {
-            console.log('\n=== /celery Client Disconnected ===');
+            console.log('\n=== Client Disconnected ===');
             console.log('Socket ID:', socket.id);
             console.log('Reason:', reason);
             console.log('================================\n');
