@@ -26,13 +26,17 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
     instrument(io, {
         auth: false,  // 禁用认证
         mode: "development",
+        namespaceName: "/",  // 监控根命名空间
         readonly: false,
-        serverId: "api-server"
+        serverId: "api-server",
+        path: "/admin"  // Admin UI 的访问路径
     });
 
     console.log('\n=== Socket.IO Admin UI ===');
     console.log('Admin UI is available at: http://localhost:8000/admin');
     console.log('Authentication is disabled');
+    console.log('Mode:', "development");
+    console.log('Namespace:', "/");
     console.log('===========================\n');
 
     if (pool) {
