@@ -203,7 +203,7 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
 
                 console.log(`Emitting message to room ${payload.conversationid} on Socket ${socket.id}`);
                 // Emits the message to the correct room "conversationid"
-                io.to(payload.conversationid).emit('celeryMessage', payload);
+                io.to(payload.conversationid).emit('celeryMessage', messageData);
             } catch (error) {
                 console.error('Error processing celeryMessage:', error);
                 console.error('Raw message data:', data);
