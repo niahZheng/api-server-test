@@ -172,11 +172,27 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
             console.log('\n=== Received celeryMessage ===');
             console.log('Socket ID:', socket.id);
             try {
-                console.log(`Emitting message to room ${data.conversationid} on Socket ${socket.id}`);
+                // 解析消息数据
+                const messageData = typeof data === 'string' ? JSON.parse(data) : data;
+                
+                // 检查必要的字段
+                if (!messageData.conversationid) {
+                    console.error('Missing conversationid in message:', messageData);
+                    return;
+                }
+
+                console.log('Message data:', {
+                    conversationid: messageData.conversationid,
+                    type: messageData.type,
+                    parameters: messageData.parameters
+                });
+
+                console.log(`Emitting message to room ${messageData.conversationid} on Socket ${socket.id}`);
                 // Emits the message to the correct room "conversationid"
-                io.to(data.conversationid).emit('celeryMessage', data);
+                io.to(messageData.conversationid).emit('celeryMessage', messageData);
             } catch (error) {
-                console.error('Error parsing JSON:', error);
+                console.error('Error processing celeryMessage:', error);
+                console.error('Raw message data:', data);
             }
         });
 
