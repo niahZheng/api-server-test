@@ -180,9 +180,6 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
             }
         });
 
-        socket.onAny((eventName, ...args) => {
-        });
-
         // Handle disconnection
         socket.on('disconnect', (reason) => {
             console.log('\n=== Client Disconnected ===');
