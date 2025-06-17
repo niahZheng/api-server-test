@@ -14,7 +14,12 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
             origin: "*",  // 允许所有域名访问
             methods: ["GET", "POST"],
             credentials: true
-        }
+        },
+        // 配置默认命名空间
+        namespace: '/',
+        // 允许所有连接默认进入根命名空间
+        allowEIO3: true,
+        transports: ['polling', 'websocket']
     });
 
     // 配置 Socket.IO Admin UI
@@ -36,8 +41,9 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
         }));
     }
 
-    // Handle client connections
+    // Handle client connections in root namespace
     io.on('connection', (socket) => {
+
         // 加入房间
         socket.on('joinRoom', (roomName, callback) => {
             try {
