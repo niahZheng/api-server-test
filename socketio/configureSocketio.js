@@ -251,7 +251,6 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
                 console.error('Raw message data:', data);
             }
         });
-image.png
 
         // Handle disconnection
         socket.on('disconnect', (reason) => {
