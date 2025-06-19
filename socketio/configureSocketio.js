@@ -251,7 +251,7 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
                 console.error('Raw message data:', data);
             }
         });
-
+        
         // Handle disconnection
         socket.on('disconnect', (reason) => {
             console.log('\n=== Client Disconnected ===');
