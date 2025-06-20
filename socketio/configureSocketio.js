@@ -189,13 +189,7 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
                 }
                 console.log('Payload:', payload);
 
-                // 检查必要的字段
-                if (!payload.conversationid) {
-                    console.error('Missing conversationid in payload:', payload);
-                    return;
-                }
-
-                console.log('Message data:', {
+                console.log('Message data for Web UI:', {
                     conversationid: payload.conversationid,
                     type: payload.type,
                     parameters: payload.parameters,
