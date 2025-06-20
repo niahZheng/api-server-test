@@ -170,7 +170,7 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
         // the data is routed to a specific agent's room
         socket.on("celeryMessage", (data) => {
             console.log('\n=== Received celeryMessage ===');
-            console.log('Socket ID:', socket.id);
+            console.log('Data:', data);
             try {
                 // 解析消息数据
                 const messageData = typeof data === 'string' ? JSON.parse(data) : data;
