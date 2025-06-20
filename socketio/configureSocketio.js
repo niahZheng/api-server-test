@@ -187,14 +187,6 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
                 } else {
                     payload = messageData;
                 }
-                console.log('Payload:', payload);
-
-                console.log('Message data for Web UI:', {
-                    conversationid: payload.conversationid,
-                    type: payload.type,
-                    parameters: payload.parameters,
-                    destinationName: messageData.destinationName
-                });
 
                 console.log(`Emitting message to room ${payload.conversationid} on Socket ${socket.id}`);
                 // Emits the message to the correct room "conversationid"
