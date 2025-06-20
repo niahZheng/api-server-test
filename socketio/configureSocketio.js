@@ -187,6 +187,7 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
                 } else {
                     payload = messageData;
                 }
+                console.log('Payload:', payload);
 
                 // 检查必要的字段
                 if (!payload.conversationid) {
