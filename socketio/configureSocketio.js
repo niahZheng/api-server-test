@@ -212,7 +212,7 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
 
         socket.on("callSummary", (data) => {
             console.log('\n=== Received callSummary message ===');
-            console.log('Socket ID:', socket.id);
+            console.log('Data:', data);
             try {
                 // 解析消息数据
                 const messageData = typeof data === 'string' ? JSON.parse(data) : data;
