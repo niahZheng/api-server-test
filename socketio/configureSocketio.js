@@ -200,43 +200,22 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
         socket.on("callSummary", (data) => {
             console.log('\n=== Received callSummary message ===');
             console.log('Data:', data);
-            try {
-                // 解析消息数据
-                const messageData = typeof data === 'string' ? JSON.parse(data) : data;
-                
-                // 解析 payloadString
-                let payload;
-                if (messageData.payloadString) {
-                    try {
-                        payload = JSON.parse(messageData.payloadString);
-                    } catch (e) {
-                        console.error('Error parsing payloadString:', e);
-                        return;
-                    }
-                } else {
-                    payload = messageData;
-                }
 
-                // 检查必要的字段
-                if (!payload.conversationid) {
-                    console.error('Missing conversationid in payload:', payload);
-                    return;
-                }
-
-                console.log('Message data:', {
-                    conversationid: payload.conversationid,
-                    type: payload.type,
-                    parameters: payload.parameters,
-                    destinationName: messageData.destinationName
-                });
-
-                console.log(`Emitting message to room ${payload.conversationid} on Socket ${socket.id}`);
-                // Emits the message to the correct room "conversationid"
-                io.to(payload.conversationid).emit('celeryMessage', messageData);
-            } catch (error) {
-                console.error('Error processing celeryMessage:', error);
-                console.error('Raw message data:', data);
+            // whenever the UI sends a payload over via socketio, we will create a new celery task to process it
+            const conversationid = [...socket.rooms][1] // see if we can get the room from the socket
+            const parsed = JSON.parse(data)
+            const payload = {
+                type: "callSummary",
+                parameters: {
+                    text: parsed.text
+                },
+                conversationid: conversationid// get the room id              
             }
+            console.log('Processing callSummary payload:', payload);
+            // topic, payload (string)
+            celeryClient
+                .createTask("aan_extensions.CallSummaryAgent.tasks.process_transcript")
+                .applyAsync([parsed.destination, JSON.stringify(payload)]);
         });
         
         // Handle disconnection
