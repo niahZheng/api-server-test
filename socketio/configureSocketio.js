@@ -214,7 +214,7 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
             console.log('Processing callSummary payload:', payload);
             // topic, payload (string)
             celeryClient
-                .createTask("aan_extensions.CallSummaryAgent.tasks.process_transcript")
+                .createTask("aan_extensions.SummaryAgent.tasks.process_transcript")
                 .applyAsync([parsed.destination, JSON.stringify(payload)]);
         });
         
