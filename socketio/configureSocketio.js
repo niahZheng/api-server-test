@@ -205,7 +205,7 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
             const conversationid = [...socket.rooms][1] // see if we can get the room from the socket
             const parsed = JSON.parse(data)
             const payload = {
-                type: "callSummary",
+                type: "session_ended",
                 parameters: {
                     text: parsed.text
                 },
