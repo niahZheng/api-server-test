@@ -207,9 +207,10 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
             const payload = {
                 type: "session_ended",
                 parameters: {
-                    text: parsed.text
+                    text: parsed.text,
+                    conversationid: parsed.conversationid
                 },
-                conversationid: conversationid// get the room id              
+                // get the room id              
             }
             console.log('Processing callSummary payload:', payload);
             // topic, payload (string)
