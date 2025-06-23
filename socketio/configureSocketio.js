@@ -2,8 +2,17 @@ const socketIO = require('socket.io')
 const { createAdapter } = require("@socket.io/postgres-adapter")
 const debug = require('debug')('configureSocketIo')
 const { instrument } = require("@socket.io/admin-ui");
+const redis = require('redis');
 
 const celeryClient = require('../celery/celeryClient')
+
+// 创建 Redis 客户端
+const redisClient = redis.createClient({
+    url: `rediss://default:${process.env.REDIS_PASSWORD}@rx-redis.redis.cache.windows.net:6380/1?ssl_cert_reqs=none`
+});
+
+// 连接 Redis
+redisClient.connect().catch(console.error);
 
 exports.configureSocketIo = function (server, pool, authenticateRequests) {
     // Set up Socket.IO with a specific path where WSS will connect to
@@ -242,15 +251,15 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
         });
         
         
-        socket.on("callIdentification", (data, callback) => {
+        socket.on("callIdentification", async (data, callback) => {
             console.log('\n=== Received callIdentification message ===');
             console.log('Data:', data);
 
             const conversationid = data.conversationid
             try {
-                self.redis_client.rpush(conversationid + '_identification', {
+                await redisClient.rPush(conversationid + '_identification', JSON.stringify({
                     identification: 1
-                })
+                }));
                 
                 console.log('Processing callIdentification to redis:', conversationid + '_identification');
                 
@@ -277,15 +286,15 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
             }
         });
 
-        socket.on("callValidation", (data, callback) => {
+        socket.on("callValidation", async (data, callback) => {
             console.log('\n=== Received callValidation message ===');
             console.log('Data:', data);
 
             const conversationid = data.conversationid
             try {
-                self.redis_client.rpush(conversationid + '_validation', {
+                await redisClient.rPush(conversationid + '_validation', JSON.stringify({
                     validation: 1
-                })
+                }));
                 
                 console.log('Processing callValidation to redis:', conversationid + '_validation');
                 
