@@ -255,7 +255,7 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
             console.log('\n=== Received callIdentification message ===');
             console.log('Data:', data);
 
-            const conversationid = data.conversationid
+            const conversationid = data
             try {
                 await redisClient.set(conversationid + '_identification', JSON.stringify({
                     identification: 1
@@ -290,7 +290,7 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
             console.log('\n=== Received callValidation message ===');
             console.log('Data:', data);
 
-            const conversationid = data.conversationid
+            const conversationid = data
             try {
                 await redisClient.set(conversationid + '_validation', JSON.stringify({
                     validation: 1
