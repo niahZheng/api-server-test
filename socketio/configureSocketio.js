@@ -226,6 +226,99 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
             console.log('Reason:', reason);
             console.log('================================\n');
         });
+
+        socket.on("callSummary", (data) => {
+            console.log('\n=== Received callSummary message ===');
+            console.log('Data:', data);
+
+            // whenever the UI sends a payload over via socketio, we will create a new celery task to process it
+            const conversationid = [...socket.rooms][1] // see if we can get the room from the socket
+            const parsed = JSON.parse(data)
+            const payload = {
+                type: "session_ended",
+                parameters: {
+                    text: parsed.text,
+                    conversationid: parsed.conversationid
+                },
+                // get the room id              
+            }
+            console.log('Processing callSummary payload:', payload);
+            // topic, payload (string)
+            celeryClient
+                .createTask("aan_extensions.SummaryAgent.tasks.process_transcript")
+                .applyAsync([parsed.destination, JSON.stringify(payload)]);
+        });
+        
+        
+        socket.on("callIdentification", (data, callback) => {
+            console.log('\n=== Received callIdentification message ===');
+            console.log('Data:', data);
+
+            const conversationid = [...socket.rooms][1]
+            try {
+                self.redis_client.rpush(conversationid + '_identification', {
+                    identification: 1
+                })
+                
+                console.log('Processing callIdentification to redis:', conversationid + '_identification');
+                
+                // 返回成功消息
+                if (typeof callback === 'function') {
+                    callback({
+                        status: 'success',
+                        message: `Successfully processed callIdentification for conversation ${conversationid}`,
+                        conversationid: conversationid
+                    });
+                }
+            } catch (error) {
+                console.error('Error processing callIdentification to redis:', error);
+                
+                // 返回失败消息
+                if (typeof callback === 'function') {
+                    callback({
+                        status: 'error',
+                        message: `Failed to process callIdentification: ${error.message}`,
+                        conversationid: conversationid,
+                        error: error.message
+                    });
+                }
+            }
+        });
+
+        socket.on("callValidation", (data, callback) => {
+            console.log('\n=== Received callValidation message ===');
+            console.log('Data:', data);
+
+            const conversationid = [...socket.rooms][1]
+            try {
+                self.redis_client.rpush(conversationid + '_validation', {
+                    validation: 1
+                })
+                
+                console.log('Processing callValidation to redis:', conversationid + '_validation');
+                
+                // 返回成功消息
+                if (typeof callback === 'function') {
+                    callback({
+                        status: 'success',
+                        message: `Successfully processed callValidation for conversation ${conversationid}`,
+                        conversationid: conversationid
+                    });
+                }
+            } catch (error) {
+                console.error('Error processing callValidation to redis:', error);
+                
+                // 返回失败消息
+                if (typeof callback === 'function') {
+                    callback({
+                        status: 'error',
+                        message: `Failed to process callValidation: ${error.message}`,
+                        conversationid: conversationid,
+                        error: error.message
+                    });
+                }
+            }
+        });
     });
 
     return io
