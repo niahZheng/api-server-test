@@ -257,7 +257,7 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
 
             const conversationid = data.conversationid
             try {
-                await redisClient.rPush(conversationid + '_identification', JSON.stringify({
+                await redisClient.set(conversationid + '_identification', JSON.stringify({
                     identification: 1
                 }));
                 
@@ -292,7 +292,7 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
 
             const conversationid = data.conversationid
             try {
-                await redisClient.rPush(conversationid + '_validation', JSON.stringify({
+                await redisClient.set(conversationid + '_validation', JSON.stringify({
                     validation: 1
                 }));
                 
