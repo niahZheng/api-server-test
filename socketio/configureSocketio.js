@@ -51,9 +51,6 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
         // 加入房间
         socket.on('joinRoom', (roomName, callback) => {
             try {
-                console.log(`\n=== Joining Room ===`);
-                console.log(`Socket ${socket.id} attempting to join room ${roomName}`);
-
                 // 确保房间名称不包含引号
                 const cleanRoomName = roomName.replace(/"/g, '');
 
@@ -208,7 +205,7 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
                 type: "session_ended",
                 parameters: {
                     text: parsed.text,
-                    conversationid: parsed.conversationid
+                    conversationid: conversationid
                 },
                 // get the room id              
             }
