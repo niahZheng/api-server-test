@@ -246,7 +246,7 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
             console.log('\n=== Received callIdentification message ===');
             console.log('Data:', data);
 
-            const conversationid = [...socket.rooms][1]
+            const conversationid = data.conversationid
             try {
                 self.redis_client.rpush(conversationid + '_identification', {
                     identification: 1
@@ -281,7 +281,7 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
             console.log('\n=== Received callValidation message ===');
             console.log('Data:', data);
 
-            const conversationid = [...socket.rooms][1]
+            const conversationid = data.conversationid
             try {
                 self.redis_client.rpush(conversationid + '_validation', {
                     validation: 1
