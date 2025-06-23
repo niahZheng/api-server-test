@@ -68,11 +68,6 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
                 // 获取当前房间列表，排除 socket ID 房间
                 const currentRooms = Array.from(socket.rooms).filter(room => room !== socket.id);
 
-                console.log(`Socket ${socket.id} joined room ${cleanRoomName}`);
-                console.log('Current rooms after join:', currentRooms);
-                console.log('All rooms:', Array.from(io.sockets.adapter.rooms.keys()));
-                console.log('===============================\n');
-
                 if (typeof callback === 'function') {
                     callback({
                         status: 'ok',
