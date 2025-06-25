@@ -257,11 +257,11 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
 
             const conversationid = data
             try {
-                await redisClient.set(conversationid + '_identification', JSON.stringify({
+                await redisClient.set(conversationid + '_identified', JSON.stringify({
                     identification: 1
                 }));
                 
-                console.log('Processing callIdentification to redis:', conversationid + '_identification');
+                console.log('Processing callIdentification to redis:', conversationid + '_identified');
                 
                 // 返回成功消息
                 if (typeof callback === 'function') {
@@ -292,11 +292,11 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
 
             const conversationid = data
             try {
-                await redisClient.set(conversationid + '_validation', JSON.stringify({
+                await redisClient.set(conversationid + '_verified', JSON.stringify({
                     validation: 1
                 }));
                 
-                console.log('Processing callValidation to redis:', conversationid + '_validation');
+                console.log('Processing callValidation to redis:', conversationid + '_verified');
                 
                 // 返回成功消息
                 if (typeof callback === 'function') {
