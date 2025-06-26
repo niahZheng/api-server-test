@@ -58,10 +58,11 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
     io.on('connection', (socket) => {
 
         // 加入房间
-        socket.on('joinRoom', (roomName, callback) => {
+        socket.on('joinRoom', async (roomName, callback) => {
             try {
                 // 确保房间名称不包含引号
                 const cleanRoomName = roomName.replace(/"/g, '');
+                const conversationid = cleanRoomName // see if we can get the room from the socket
 
                 // 检查房间是否存在
                 const room = io.sockets.adapter.rooms.get(cleanRoomName);
@@ -71,6 +72,20 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
 
                 // 加入房间
                 socket.join(cleanRoomName);
+
+                try {
+                    await redisClient.set(conversationid + '_identified', JSON.stringify({
+                        status: "unidentified"
+                    }));
+                    await redisClient.set(conversationid + '_verified', JSON.stringify({
+                        status: "unverified"
+                    }));
+                }
+                catch (error) {
+                    console.error('Error joining room:', error);
+                }
+                
+                console.log('Processing callIdentification to redis:', conversationid + '_identified');
 
                 // 获取当前房间列表，排除 socket ID 房间
                 const currentRooms = Array.from(socket.rooms).filter(room => room !== socket.id);
