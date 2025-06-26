@@ -80,22 +80,16 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
                     await redisClient.set(conversationid + '_verified', JSON.stringify({
                         status: "unverified"
                     }));
+                    console.log('Initial customer status identified&verified:', conversationid + '_identified', conversationid + '_verified');
                 }
                 catch (error) {
-                    console.error('Error joining room:', error);
-                }
-                
-                console.log('Processing callIdentification to redis:', conversationid + '_identified');
-
-                // 获取当前房间列表，排除 socket ID 房间
-                const currentRooms = Array.from(socket.rooms).filter(room => room !== socket.id);
+                    console.error('Error initial customer status identified&verified:', error);
+                }                
 
                 if (typeof callback === 'function') {
                     callback({
                         status: 'ok',
                         message: `Successfully joined room ${cleanRoomName}`,
-                        rooms: currentRooms,
-                        allRooms: Array.from(io.sockets.adapter.rooms.keys()),
                         socketId: socket.id,
                         roomCreated: !room,  // 添加标志表示房间是否是新创建的
                         roomSize: room ? room.size : 1  // 添加房间大小信息
