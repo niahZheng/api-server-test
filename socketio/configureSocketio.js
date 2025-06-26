@@ -67,8 +67,6 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
                 const room = io.sockets.adapter.rooms.get(cleanRoomName);
                 if (!room) {
                     console.log(`Room ${cleanRoomName} does not exist, creating it...`);
-                } else {
-                    console.log(`Room ${cleanRoomName} exists with ${room.size} sockets`);
                 }
 
                 // 加入房间
@@ -228,37 +226,14 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
             console.log('================================\n');
         });
 
-        socket.on("callSummary", (data) => {
-            console.log('\n=== Received callSummary message ===');
-            console.log('Data:', data);
-
-            // whenever the UI sends a payload over via socketio, we will create a new celery task to process it
-            const conversationid = [...socket.rooms][1] // see if we can get the room from the socket
-            const parsed = JSON.parse(data)
-            const payload = {
-                type: "session_ended",
-                parameters: {
-                    text: parsed.text,
-                    conversationid: parsed.conversationid
-                },
-                // get the room id              
-            }
-            console.log('Processing callSummary payload:', payload);
-            // topic, payload (string)
-            celeryClient
-                .createTask("aan_extensions.SummaryAgent.tasks.process_transcript")
-                .applyAsync([parsed.destination, JSON.stringify(payload)]);
-        });
-        
-        
         socket.on("callIdentification", async (data, callback) => {
             console.log('\n=== Received callIdentification message ===');
             console.log('Data:', data);
 
-            const conversationid = data
+            const conversationid = data.conversationid
             try {
                 await redisClient.set(conversationid + '_identified', JSON.stringify({
-                    identification: 1
+                    status: data.buttonType
                 }));
                 
                 console.log('Processing callIdentification to redis:', conversationid + '_identified');
@@ -290,10 +265,10 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
             console.log('\n=== Received callValidation message ===');
             console.log('Data:', data);
 
-            const conversationid = data
+            const conversationid = data.conversationid
             try {
                 await redisClient.set(conversationid + '_verified', JSON.stringify({
-                    validation: 1
+                    status: data.buttonType
                 }));
                 
                 console.log('Processing callValidation to redis:', conversationid + '_verified');
