@@ -74,13 +74,15 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
                 socket.join(cleanRoomName);
 
                 try {
-                    await redisClient.set(conversationid + '_identified', JSON.stringify({
-                        status: "unidentified"
+                    await redisClient.set(conversationid + '_idv', JSON.stringify({
+                        "conversationId": conversationid,
+                        "identified": "unidentified",
+                        "verified": "unverified",
+                        "message": null,
+                        "history_messages": null,
+                        "pre_intent": "OrderStatus"
                     }));
-                    await redisClient.set(conversationid + '_verified', JSON.stringify({
-                        status: "unverified"
-                    }));
-                    console.log('Initial customer status identified&verified:', conversationid + '_identified', conversationid + '_verified');
+                    console.log('Initial customer status identified&verified:', conversationid + '_idv');
                 }
                 catch (error) {
                     console.error('Error initial customer status identified&verified:', error);
@@ -240,10 +242,100 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
             console.log('Data:', data);
 
             const conversationid = data.conversationid
+            const buttonType = data.buttonType
             try {
-                await redisClient.set(conversationid + '_identified', JSON.stringify({
-                    status: data.buttonType
-                }));
+                // 先读取Redis中的旧数据
+                const idvData = await redisClient.get(conversationid + '_idv');
+                // 解析现有数据
+                const parsedData = JSON.parse(idvData);
+                // 读取conversationid key的全部内容作为history_messages                
+                if (idvData) {
+                    let historyMessages = parsedData.history_messages;
+                    if (idvData.history_messages === null) {
+                        try {
+                            const conversationData = await redisClient.get(conversationid);
+                            if (conversationData) {
+                                // 尝试解析为JSON，如果不是JSON则作为字符串处理
+                                try {
+                                    const parsedConversation = JSON.parse(conversationData);
+                                    historyMessages = Array.isArray(parsedConversation) ? parsedConversation : [parsedConversation];
+                                } catch (e) {
+                                    // 如果不是JSON格式，直接作为字符串数组
+                                    historyMessages = [conversationData];
+                                }
+                            }
+                        } catch (error) {
+                            console.error('Error reading conversation data for history_messages:', error);
+                            historyMessages = [];
+                        }
+                    }
+                    // 只更新identified字段和history_messages字段
+                    if (buttonType === "failed") {
+                        parsedData.identified = "failed";
+                        parsedData.verified = "failed";
+                    } else {
+                        parsedData.identified = "identified";
+                    }
+                    parsedData.history_messages = historyMessages;
+
+                    // =========================此处对接 Watsonx Orchestrator Service=========================
+                    // 检查API密钥是否已设置
+                    if (!process.env.WATSONX_ORCHESTRATOR_API_KEY) {
+                        console.error('WATSONX_ORCHESTRATOR_API_KEY environment variable is not set');
+                        throw new Error('Watsonx Orchestrator API key is not configured');
+                    }
+                    
+                    // 调用 Watsonx Orchestrator Service 的 API
+                    const response = await fetch('https://api.watsonx.ai/orchestrator/v1/orchestrator/orchestrator', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${process.env.WATSONX_ORCHESTRATOR_API_KEY}`,
+                            'X-API-Key': process.env.WATSONX_ORCHESTRATOR_API_KEY
+                        },
+                        body: JSON.stringify(parsedData)
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`Watsonx API request failed with status: ${response.status}`);
+                    }
+                    
+                    const data = await response.json();
+                    console.log('Watsonx Orchestrator Service response:', data);
+                    if (data.status === 'success') {
+                        console.log('Watsonx Orchestrator Service response:', data);
+                        // 保存更新后的数据
+                        await redisClient.set(conversationid + '_idv', JSON.stringify(parsedData));
+                        console.log('Updated identified field in redis:', conversationid + '_idv', 'new value:', buttonType);
+                    } else {
+                        console.log('Watsonx Orchestrator Service response:', data);
+                    }
+                    // =========================此处对接 Watsonx Orchestrator Service=========================
+                    
+                } else {
+                    // 如果数据不存在，创建新的数据结构
+                    // await redisClient.set(conversationid + '_idv', JSON.stringify(
+                    //     {
+                    //         "conversationId": conversationid,
+                    //         "identified": buttonType,
+                    //         "verified": "unverified",
+                    //         "message": null,
+                    //         "history_messages": historyMessages,
+                    //         "pre_intent": "identify"
+                    //     }
+                    // ));
+                    
+                    console.log(' IDV data not found in redis: Created new identified data in redis:', conversationid + '_idv');
+                    // 返回失败消息
+                    if (typeof callback === 'function') {
+                        callback({
+                            status: 'error',
+                            message: `Failed to process callIdentification: IDV data not found in redis: Created new identified data in redis`,
+                            conversationid: conversationid,
+                            error: 'IDV data not found in redis: Created new identified data in redis'
+                        });
+                    }
+                }
                 
                 console.log('Processing callIdentification to redis:', conversationid + '_identified');
                 
@@ -256,7 +348,7 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
                     });
                 }
             } catch (error) {
-                console.error('Error processing callIdentification to redis:', error);
+                console.error('Error processing callIdentification:', error);
                 
                 // 返回失败消息
                 if (typeof callback === 'function') {
@@ -275,12 +367,100 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
             console.log('Data:', data);
 
             const conversationid = data.conversationid
+            const buttonType = data.buttonType
             try {
-                await redisClient.set(conversationid + '_verified', JSON.stringify({
-                    status: data.buttonType
-                }));
+                // 先读取Redis中的旧数据
+                const idvData = await redisClient.get(conversationid + '_idv');
+                // 解析现有数据
+                const parsedData = JSON.parse(idvData);
+                // 读取conversationid key的全部内容作为history_messages                
+                if (idvData) {
+                    let idvMessages = parsedData.messages;
+                    let historyMessages = parsedData.history_messages;
+                    if (idvData.history_messages === null) {
+                        try {
+                            const conversationData = await redisClient.get(conversationid);
+                            if (conversationData) {
+                                // 尝试解析为JSON，如果不是JSON则作为字符串处理
+                                try {
+                                    const parsedConversation = JSON.parse(conversationData);
+                                    historyMessages = Array.isArray(parsedConversation) ? parsedConversation : [parsedConversation];
+                                } catch (e) {
+                                    // 如果不是JSON格式，直接作为字符串数组
+                                    historyMessages = [conversationData];
+                                }
+                            }
+                        } catch (error) {
+                            console.error('Error reading conversation data for history_messages:', error);
+                            historyMessages = [];
+                        }
+                    }
+                    // 只更新verified字段和history_messages字段
+                    if (buttonType === "failed") {
+                        parsedData.verified = "failed";
+                    } else {
+                        parsedData.verified = "verified";
+                    }
+                    parsedData.history_messages = historyMessages;
+                    parsedData.messages = idvMessages;
+                    // =========================此处对接 Watsonx Orchestrator Service=========================
+                    // 检查API密钥是否已设置
+                    if (!process.env.WATSONX_ORCHESTRATOR_API_KEY) {
+                        console.error('WATSONX_ORCHESTRATOR_API_KEY environment variable is not set');
+                        throw new Error('Watsonx Orchestrator API key is not configured');
+                    }
+                    
+                    // 调用 Watsonx Orchestrator Service 的 API
+                    const response = await fetch('https://api.watsonx.ai/orchestrator/v1/orchestrator/orchestrator', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${process.env.WATSONX_ORCHESTRATOR_API_KEY}`,
+                            'X-API-Key': process.env.WATSONX_ORCHESTRATOR_API_KEY
+                        },
+                        body: JSON.stringify(parsedData)
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`Watsonx API request failed with status: ${response.status}`);
+                    }
+                    
+                    const data = await response.json();
+                    console.log('Watsonx Orchestrator Service response:', data);
+                    if (data.status === 'success') {
+                        console.log('Watsonx Orchestrator Service response:', data);
+                        // 保存更新后的数据
+                        await redisClient.set(conversationid + '_idv', JSON.stringify(parsedData));
+                        console.log('Updated verified field in redis:', conversationid + '_idv', 'new value:', buttonType);
+                    } else {
+                        console.log('Watsonx Orchestrator Service response:', data);
+                    }
+                    // =========================此处对接 Watsonx Orchestrator Service=========================
+                    
+                } else {
+                    // 如果数据不存在，创建新的数据结构
+                    // await redisClient.set(conversationid + '_idv', JSON.stringify({
+                    //     "conversationId": conversationid,
+                    //     "identified": "identified",
+                    //     "verified": buttonType,
+                    //     "message": null,
+                    //     "history_messages": historyMessages,
+                    //     "pre_intent": "verify"
+                    // }));
+                    
+                    console.log(' IDV data not found in redis: Created new verified data in redis:', conversationid + '_idv');
+                    // 返回失败消息
+                    if (typeof callback === 'function') {
+                        callback({
+                            status: 'error',
+                            message: `Failed to process callValidation: IDV data not found in redis: Created new verified data in redis`,
+                            conversationid: conversationid,
+                            error: 'IDV data not found in redis: Created new verified data in redis'
+                        });
+                    }
+                }
                 
-                console.log('Processing callValidation to redis:', conversationid + '_verified');
+                console.log('Processing callValidation to redis:', conversationid + '_idv');
                 
                 // 返回成功消息
                 if (typeof callback === 'function') {
@@ -291,7 +471,7 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
                     });
                 }
             } catch (error) {
-                console.error('Error processing callValidation to redis:', error);
+                console.error('Error processing callValidation:', error);
                 
                 // 返回失败消息
                 if (typeof callback === 'function') {
