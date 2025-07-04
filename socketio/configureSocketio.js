@@ -3,6 +3,8 @@ const { createAdapter } = require("@socket.io/postgres-adapter")
 const debug = require('debug')('configureSocketIo')
 const { instrument } = require("@socket.io/admin-ui");
 const redis = require('redis');
+const AssistantV2 = require('ibm-watson/assistant/v2')
+const { IamAuthenticator } = require('ibm-watson/auth');
 
 const celeryClient = require('../celery/celeryClient')
 
@@ -13,6 +15,15 @@ const redisClient = redis.createClient({
 
 // 连接 Redis
 redisClient.connect().catch(console.error);
+
+// In the constructor, letting the SDK manage the token
+const assistant = new AssistantV2({
+    version: '2024-08-25',
+    authenticator: new IamAuthenticator({
+      apikey: process.env.WATSONX_ORCHESTRATOR_API_KEY,
+    }),
+    serviceUrl: 'https://api.us-south.assistant.watson.cloud.ibm.com/instances/1234567890',
+  });
 
 exports.configureSocketIo = function (server, pool, authenticateRequests) {
     // Set up Socket.IO with a specific path where WSS will connect to
@@ -279,36 +290,29 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
                     parsedData.history_messages = historyMessages;
 
                     // =========================此处对接 Watsonx Orchestrator Service=========================
-                    // 检查API密钥是否已设置
-                    if (!process.env.WATSONX_ORCHESTRATOR_API_KEY) {
-                        console.error('WATSONX_ORCHESTRATOR_API_KEY environment variable is not set');
-                        throw new Error('Watsonx Orchestrator API key is not configured');
-                    }
-                    
-                    // 调用 Watsonx Orchestrator Service 的 API
-                    const response = await fetch('https://api.watsonx.ai/orchestrator/v1/orchestrator/orchestrator', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${process.env.WATSONX_ORCHESTRATOR_API_KEY}`,
-                            'X-API-Key': process.env.WATSONX_ORCHESTRATOR_API_KEY
-                        },
-                        body: JSON.stringify(parsedData)
-                    });
-                    
-                    if (!response.ok) {
-                        throw new Error(`Watsonx API request failed with status: ${response.status}`);
-                    }
-                    
-                    const data = await response.json();
-                    console.log('Watsonx Orchestrator Service response:', data);
-                    if (data.status === 'success') {
-                        console.log('Watsonx Orchestrator Service response:', data);
-                        // 保存更新后的数据
+                    try {
+                        const response = await assistant.message({
+                            assistantId: '1234567890',
+                            sessionId: '1234567890',
+                            input: {
+                                text: 'Hello, how are you?'
+                            }
+                        });
+                        
+                        console.log('Watsonx Orchestrator Service response:', response);
+                        if (response && response.output) {
+                            console.log('Watsonx Orchestrator Service response:', response);
+                            // 保存更新后的数据
+                            await redisClient.set(conversationid + '_idv', JSON.stringify(parsedData));
+                            console.log('Updated identified field in redis:', conversationid + '_idv', 'new value:', buttonType);
+                        } else {
+                            console.log('Watsonx Orchestrator Service response:', response);
+                        }
+                    } catch (error) {
+                        console.error('Error calling Watson Assistant:', error);
+                        // 即使 Watson 调用失败，也继续保存数据到 Redis
                         await redisClient.set(conversationid + '_idv', JSON.stringify(parsedData));
                         console.log('Updated identified field in redis:', conversationid + '_idv', 'new value:', buttonType);
-                    } else {
-                        console.log('Watsonx Orchestrator Service response:', data);
                     }
                     // =========================此处对接 Watsonx Orchestrator Service=========================
                     
