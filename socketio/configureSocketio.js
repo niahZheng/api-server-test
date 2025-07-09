@@ -9,7 +9,7 @@ const celeryClient = require('../celery/celeryClient')
 
 // 创建 Redis 客户端
 const redisClient = redis.createClient({
-    url: `rediss://default:${process.env.REDIS_PASSWORD}@rx-redis.redis.cache.windows.net:6380/1?ssl_cert_reqs=none`
+    url: `${process.env.AAN_REDIS_URI}`
 });
 
 // 连接 Redis
@@ -26,6 +26,7 @@ async function initializeWatsonAssistant() {
             !process.env.AAN_ASSISTANT_USERNAME || 
             !process.env.AAN_ASSISTANT_PASSWORD ||
             !process.env.AAN_ASSISTANT_INSTANCE ||
+            !process.env.AAN_ASSISTANT_DEPLOYMENT_ID ||
             !process.env.AAN_ASSISTANT_ID ||
             !process.env.AAN_ASSISTANT_API_VERSION) {
             throw new Error('Watson Assistant environment variables are not properly configured');
@@ -55,7 +56,7 @@ async function initializeWatsonAssistant() {
         
         // Set up assistant configuration
         assistantConfig = {
-            url: `${process.env.AAN_ASSISTANT_URL}/assistant/ibm-software-hub-services-wo-wa`,
+            url: `${process.env.AAN_ASSISTANT_URL}/assistant/${process.env.AAN_ASSISTANT_DEPLOYMENT_ID}`,
             instance: process.env.AAN_ASSISTANT_INSTANCE,
             id: process.env.AAN_ASSISTANT_ID,
             apiVersion: process.env.AAN_ASSISTANT_API_VERSION
