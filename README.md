@@ -53,6 +53,14 @@ A real-time Node.js API server with Socket.IO integration, Redis caching, and Ce
    # Watson Assistant (optional)
    WATSONX_ORCHESTRATOR_API_KEY=your_watson_api_key
    
+   # Watson Assistant Configuration (optional)
+   AAN_ASSISTANT_URL=https://your-watson-assistant-url
+   AAN_ASSISTANT_USERNAME=your_username
+   AAN_ASSISTANT_PASSWORD=your_password
+   AAN_ASSISTANT_INSTANCE=your_instance_id
+   AAN_ASSISTANT_ID=your_assistant_id
+   AAN_ASSISTANT_API_VERSION=2024-08-25
+   
    # SSL Configuration
    FORCE_SSL=false
    ```
@@ -218,6 +226,12 @@ Access Socket.IO Admin UI at: `http://localhost:8000/admin`
 | `SOCKETIO_DB_URI` | PostgreSQL connection string | - |
 | `OIDC_ISSUER` | OIDC issuer URL | - |
 | `WATSONX_ORCHESTRATOR_API_KEY` | Watson Assistant API key | - |
+| `AAN_ASSISTANT_URL` | Watson Assistant base URL | - |
+| `AAN_ASSISTANT_USERNAME` | Watson Assistant username | - |
+| `AAN_ASSISTANT_PASSWORD` | Watson Assistant password | - |
+| `AAN_ASSISTANT_INSTANCE` | Watson Assistant instance ID | - |
+| `AAN_ASSISTANT_ID` | Watson Assistant ID | - |
+| `AAN_ASSISTANT_API_VERSION` | Watson Assistant API version | `2024-08-25` |
 | `FORCE_SSL` | Force HTTPS redirect | `false` |
 
 ### Redis Configuration

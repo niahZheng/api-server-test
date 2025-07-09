@@ -3,8 +3,7 @@ const { createAdapter } = require("@socket.io/postgres-adapter")
 const debug = require('debug')('configureSocketIo')
 const { instrument } = require("@socket.io/admin-ui");
 const redis = require('redis');
-const AssistantV2 = require('ibm-watson/assistant/v2')
-const { IamAuthenticator } = require('ibm-watson/auth');
+const fetch = require('node-fetch');
 
 const celeryClient = require('../celery/celeryClient')
 
@@ -16,26 +15,124 @@ const redisClient = redis.createClient({
 // 连接 Redis
 redisClient.connect().catch(console.error);
 
-// In the constructor, letting the SDK manage the token
-let assistant;
-try {
-    if (!process.env.WATSONX_ORCHESTRATOR_API_KEY) {
-        throw new Error('WATSONX_ORCHESTRATOR_API_KEY environment variable is not set');
+// Watson Assistant configuration and token management
+let waToken = null;
+let assistantConfig = null;
+
+async function initializeWatsonAssistant() {
+    try {
+        // Check if required environment variables are set
+        if (!process.env.AAN_ASSISTANT_URL || 
+            !process.env.AAN_ASSISTANT_USERNAME || 
+            !process.env.AAN_ASSISTANT_PASSWORD ||
+            !process.env.AAN_ASSISTANT_INSTANCE ||
+            !process.env.AAN_ASSISTANT_ID ||
+            !process.env.AAN_ASSISTANT_API_VERSION) {
+            throw new Error('Watson Assistant environment variables are not properly configured');
+        }
+
+        // Get authentication token
+        const authUrl = `${process.env.AAN_ASSISTANT_URL}/icp4d-api/v1/authorize`;
+        const authPayload = {
+            username: process.env.AAN_ASSISTANT_USERNAME,
+            password: process.env.AAN_ASSISTANT_PASSWORD
+        };
+
+        const authResponse = await fetch(authUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(authPayload)
+        });
+
+        if (!authResponse.ok) {
+            throw new Error(`Authentication failed: ${authResponse.status}`);
+        }
+
+        const authData = await authResponse.json();
+        waToken = authData.token;
+        
+        // Set up assistant configuration
+        assistantConfig = {
+            url: `${process.env.AAN_ASSISTANT_URL}/assistant/ibm-software-hub-services-wo-wa`,
+            instance: process.env.AAN_ASSISTANT_INSTANCE,
+            id: process.env.AAN_ASSISTANT_ID,
+            apiVersion: process.env.AAN_ASSISTANT_API_VERSION
+        };
+
+        console.log('Watson Assistant initialized successfully');
+        return true;
+    } catch (error) {
+        console.error('Failed to initialize Watson Assistant:', error.message);
+        return false;
     }
-    
-    assistant = new AssistantV2({
-        version: '2024-08-25',
-        authenticator: new IamAuthenticator({
-          apikey: process.env.WATSONX_ORCHESTRATOR_API_KEY,
-        }),
-        serviceUrl: 'https://api.us-south.assistant.watson.cloud.ibm.com/instances/1234567890',
-    });
-    
-    console.log('Watson Assistant initialized successfully');
-} catch (error) {
-    console.error('Failed to initialize Watson Assistant:', error.message);
-    assistant = null;
 }
+
+async function createWatsonSession() {
+    if (!waToken || !assistantConfig) {
+        throw new Error('Watson Assistant not initialized');
+    }
+
+    const sessionUrl = `${assistantConfig.url}/instances/${assistantConfig.instance}/api/v2/assistants/${assistantConfig.id}/sessions?version=${assistantConfig.apiVersion}`;
+    
+    const response = await fetch(sessionUrl, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${waToken}`,
+            'accept': 'application/json'
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error(`Session creation failed: ${response.status}`);
+    }
+
+    const body = await response.json();
+    return body.session_id;
+}
+
+async function sendWatsonMessage(sessionId, messagePayload) {
+    if (!waToken || !assistantConfig) {
+        throw new Error('Watson Assistant not initialized');
+    }
+
+    const messageUrl = `${assistantConfig.url}/instances/${assistantConfig.instance}/api/v2/assistants/${assistantConfig.id}/sessions/${sessionId}/message?version=${assistantConfig.apiVersion}`;
+    
+    const response = await fetch(messageUrl, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${waToken}`,
+            'accept': 'application/json',
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(messagePayload)
+    });
+
+    if (!response.ok) {
+        throw new Error(`Message sending failed: ${response.status}`);
+    }
+
+    const responseData = await response.json();
+    
+    // Extract response texts similar to nba.py
+    const responseTexts = responseData.output?.generic
+        ?.filter(item => item.response_type === 'text')
+        ?.map(item => item.text) || [];
+
+    const customResponse = {
+        session_ID: responseData.context?.global?.session_id || 'unknown',
+        intentType: responseData.context?.skills?.['actions skill']?.skill_variables?.intent || 'None',
+        quickActions: responseTexts,
+        text: responseData.context?.skills?.['actions skill']?.skill_variables?.query_ || '',
+        conversation_ID: responseData.context?.skills?.['actions skill']?.skill_variables?.conversation_ID || 'None',
+    };
+
+    return customResponse;
+}
+
+// Initialize Watson Assistant on startup
+initializeWatsonAssistant();
 
 exports.configureSocketIo = function (server, pool, authenticateRequests) {
     // Set up Socket.IO with a specific path where WSS will connect to
@@ -97,13 +194,15 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
                 socket.join(cleanRoomName);
 
                 try {
+                    const sessionId = await createWatsonSession();
                     await redisClient.set(conversationid + '_idv', JSON.stringify({
-                        "conversationId": conversationid,
-                        "identified": "unidentified",
-                        "verified": "unverified",
-                        "message": null,
-                        "history_messages": null,
-                        "pre_intent": "OrderStatus"
+                        "session_ID": sessionId,
+                        "conversation_ID": conversationid,
+                        "Identified": "unidentified",
+                        "Verified": "unverified",
+                        "QA_inProgress": "True",
+                        "pre_intent": "",
+                        "text": ""
                     }));
                     console.log('Initial customer status identified&verified:', conversationid + '_idv');
                 }
@@ -272,82 +371,84 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
                 // 解析现有数据
                 const parsedData = JSON.parse(idvData);
                 // 读取conversationid key的全部内容作为history_messages                
-                if (idvData) {
-                    let historyMessages = parsedData.history_messages;
-                    if (idvData.history_messages === null) {
-                        try {
-                            const conversationData = await redisClient.get(conversationid);
-                            if (conversationData) {
-                                // 尝试解析为JSON，如果不是JSON则作为字符串处理
-                                try {
-                                    const parsedConversation = JSON.parse(conversationData);
-                                    historyMessages = Array.isArray(parsedConversation) ? parsedConversation : [parsedConversation];
-                                } catch (e) {
-                                    // 如果不是JSON格式，直接作为字符串数组
-                                    historyMessages = [conversationData];
-                                }
-                            }
-                        } catch (error) {
-                            console.error('Error reading conversation data for history_messages:', error);
-                            historyMessages = [];
-                        }
-                    }
+                if (idvData) {              
                     // 只更新identified字段和history_messages字段
                     if (buttonType === "failed") {
-                        parsedData.identified = "failed";
-                        parsedData.verified = "failed";
+                        parsedData.Identified = "failed";
+                        parsedData.Verified = "failed";
                     } else {
-                        parsedData.identified = "identified";
+                        parsedData.Identified = "identified";
+                        parsedData.Verified = "unverified";
                     }
-                    parsedData.history_messages = historyMessages;
-
                     // =========================此处对接 Watsonx Orchestrator Service=========================
-                    if (assistant) {
+                    if (waToken) {
                         try {
-                            const response = await assistant.message({
-                                assistantId: '1234567890',
-                                sessionId: '1234567890',
-                                input: {
-                                    text: 'Hello, how are you?'
+                            message_payload = {
+                                "input": {
+                                    "text": parsedData.text,
+                                    'options': {'return_context': True}
+                                },        
+                                "context" : {
+                                    'skills': {
+                                    'actions skill': {
+                                            'skill_variables': {
+                                                'session_ID': parsedData.session_ID,
+                                                'Identified': parsedData.Identified,
+                                                'Verified': parsedData.Verified,
+                                                'pre_intent': parsedData.intentType,
+                                                'QA_inProgress': "False",  // True代表qa正常使用，False表示正在验证
+                                                "conversation_ID": conversationid
+                                            }
+                                        }
+                                    }
                                 }
-                            });
+                            }                               
+                            const response = await sendWatsonMessage(parsedData.session_ID, message_payload);
                             
                             console.log('Watsonx Orchestrator Service response:', response);
-                            if (response && response.output) {
-                                console.log('Watsonx Orchestrator Service response:', response);
+                            if (response) {
                                 // 保存更新后的数据
-                                await redisClient.set(conversationid + '_idv', JSON.stringify(parsedData));
-                                console.log('Updated identified field in redis:', conversationid + '_idv', 'new value:', buttonType);
+                                await redisClient.set(conversationid + '_idv', JSON.stringify(response));
+                                console.log('Updated identified field in redis:', conversationid + '_idv');
                             } else {
-                                console.log('Watsonx Orchestrator Service response:', response);
+                                console.log('Cannot get response from Watsonx Orchestrator Service with this payload: ', message_payload);
+                                // 返回失败消息
+                                if (typeof callback === 'function') {
+                                    callback({
+                                        status: 'error',
+                                        message: `Failed to process callIdentification: Cannot get response from Watsonx Orchestrator Service with this payload: ${message_payload}`,
+                                        conversationid: conversationid,
+                                        error: 'Cannot get response from Watsonx Orchestrator Service with this payload: ' + message_payload
+                                    });
+                                }
                             }
                         } catch (error) {
                             console.error('Error calling Watson Assistant:', error);
-                            // 即使 Watson 调用失败，也继续保存数据到 Redis
-                            await redisClient.set(conversationid + '_idv', JSON.stringify(parsedData));
-                            console.log('Updated identified field in redis:', conversationid + '_idv', 'new value:', buttonType);
+                            // 返回失败消息
+                            if (typeof callback === 'function') {
+                                callback({
+                                    status: 'error',
+                                    message: `Failed to process callIdentification: Cannot get response from Watsonx Orchestrator Service with this payload: ${message_payload}`,
+                                    conversationid: conversationid,
+                                    error: 'Cannot get response from Watsonx Orchestrator Service with this payload: ' + message_payload
+                                });
+                            }
                         }
                     } else {
                         console.log('Watson Assistant not initialized, skipping API call');
-                        // 直接保存数据到 Redis
-                        await redisClient.set(conversationid + '_idv', JSON.stringify(parsedData));
-                        console.log('Updated identified field in redis:', conversationid + '_idv', 'new value:', buttonType);
+                        // 返回失败消息
+                        if (typeof callback === 'function') {
+                            callback({
+                                status: 'error',
+                                message: `Failed to process callIdentification: Watson Assistant not initialized`,
+                                conversationid: conversationid,
+                                error: 'Watson Assistant not initialized'
+                            });
+                        }
                     }
                     // =========================此处对接 Watsonx Orchestrator Service=========================
                     
-                } else {
-                    // 如果数据不存在，创建新的数据结构
-                    // await redisClient.set(conversationid + '_idv', JSON.stringify(
-                    //     {
-                    //         "conversationId": conversationid,
-                    //         "identified": buttonType,
-                    //         "verified": "unverified",
-                    //         "message": null,
-                    //         "history_messages": historyMessages,
-                    //         "pre_intent": "identify"
-                    //     }
-                    // ));
-                    
+                } else {                    
                     console.log(' IDV data not found in redis: Created new identified data in redis:', conversationid + '_idv');
                     // 返回失败消息
                     if (typeof callback === 'function') {
@@ -389,90 +490,83 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
             console.log('\n=== Received callValidation message ===');
             console.log('Data:', data);
 
-            const conversationid = data.conversationid
-            const buttonType = data.buttonType
+            const conversationid = data.conversationid;
+            const buttonType = data.buttonType;
             try {
-                // 先读取Redis中的旧数据
+                // Get existing data
                 const idvData = await redisClient.get(conversationid + '_idv');
-                // 解析现有数据
-                const parsedData = JSON.parse(idvData);
-                // 读取conversationid key的全部内容作为history_messages                
                 if (idvData) {
-                    let idvMessages = parsedData.messages;
-                    let historyMessages = parsedData.history_messages;
-                    if (idvData.history_messages === null) {
-                        try {
-                            const conversationData = await redisClient.get(conversationid);
-                            if (conversationData) {
-                                // 尝试解析为JSON，如果不是JSON则作为字符串处理
-                                try {
-                                    const parsedConversation = JSON.parse(conversationData);
-                                    historyMessages = Array.isArray(parsedConversation) ? parsedConversation : [parsedConversation];
-                                } catch (e) {
-                                    // 如果不是JSON格式，直接作为字符串数组
-                                    historyMessages = [conversationData];
-                                }
-                            }
-                        } catch (error) {
-                            console.error('Error reading conversation data for history_messages:', error);
-                            historyMessages = [];
-                        }
-                    }
-                    // 只更新verified字段和history_messages字段
+                    const parsedData = JSON.parse(idvData);
+
+                    // Update fields
                     if (buttonType === "failed") {
-                        parsedData.verified = "failed";
+                        parsedData.Verified = "failed";
                     } else {
-                        parsedData.verified = "verified";
+                        parsedData.Verified = "verified";
                     }
-                    parsedData.history_messages = historyMessages;
-                    parsedData.messages = idvMessages;
-                    // =========================此处对接 Watsonx Orchestrator Service=========================
-                    if (assistant) {
+
+                    if (waToken) {
                         try {
-                            const response = await assistant.message({
-                                assistantId: '1234567890',
-                                sessionId: '1234567890',
-                                input: {
-                                    text: 'Hello, how are you?'
+                            const message_payload = {
+                                "input": {
+                                    "text": parsedData.text,
+                                    'options': {'return_context': true}
+                                },
+                                "context": {
+                                    'skills': {
+                                        'actions skill': {
+                                            'skill_variables': {
+                                                'session_ID': parsedData.session_ID,
+                                                'Identified': parsedData.Identified,
+                                                'Verified': parsedData.Verified,
+                                                'pre_intent': parsedData.intentType,
+                                                'QA_inProgress': "False",
+                                                "conversation_ID": conversationid
+                                            }
+                                        }
+                                    }
                                 }
-                            });
-                            
+                            };
+                            const response = await sendWatsonMessage(parsedData.session_ID, message_payload);
                             console.log('Watsonx Orchestrator Service response:', response);
-                            if (response && response.output) {
-                                console.log('Watsonx Orchestrator Service response:', response);
-                                // 保存更新后的数据
-                                await redisClient.set(conversationid + '_idv', JSON.stringify(parsedData));
-                                console.log('Updated verified field in redis:', conversationid + '_idv', 'new value:', buttonType);
+                            if (response) {
+                                await redisClient.set(conversationid + '_idv', JSON.stringify(response));
+                                console.log('Updated verified field in redis:', conversationid + '_idv');
                             } else {
-                                console.log('Watsonx Orchestrator Service response:', response);
+                                console.log('Cannot get response from Watsonx Orchestrator Service with this payload: ', message_payload);
+                                if (typeof callback === 'function') {
+                                    callback({
+                                        status: 'error',
+                                        message: `Failed to process callValidation: Cannot get response from Watsonx Orchestrator Service with this payload: ${JSON.stringify(message_payload)}`,
+                                        conversationid: conversationid,
+                                        error: 'Cannot get response from Watsonx Orchestrator Service with this payload: ' + JSON.stringify(message_payload)
+                                    });
+                                }
                             }
                         } catch (error) {
                             console.error('Error calling Watson Assistant:', error);
-                            // 即使 Watson 调用失败，也继续保存数据到 Redis
-                            await redisClient.set(conversationid + '_idv', JSON.stringify(parsedData));
-                            console.log('Updated verified field in redis:', conversationid + '_idv', 'new value:', buttonType);
+                            if (typeof callback === 'function') {
+                                callback({
+                                    status: 'error',
+                                    message: `Failed to process callValidation: Cannot get response from Watsonx Orchestrator Service with this payload: ${JSON.stringify(message_payload)}`,
+                                    conversationid: conversationid,
+                                    error: 'Cannot get response from Watsonx Orchestrator Service with this payload: ' + JSON.stringify(message_payload)
+                                });
+                            }
                         }
                     } else {
                         console.log('Watson Assistant not initialized, skipping API call');
-                        // 直接保存数据到 Redis
-                        await redisClient.set(conversationid + '_idv', JSON.stringify(parsedData));
-                        console.log('Updated verified field in redis:', conversationid + '_idv', 'new value:', buttonType);
+                        if (typeof callback === 'function') {
+                            callback({
+                                status: 'error',
+                                message: `Failed to process callValidation: Watson Assistant not initialized`,
+                                conversationid: conversationid,
+                                error: 'Watson Assistant not initialized'
+                            });
+                        }
                     }
-                    // =========================此处对接 Watsonx Orchestrator Service=========================
-                    
                 } else {
-                    // 如果数据不存在，创建新的数据结构
-                    // await redisClient.set(conversationid + '_idv', JSON.stringify({
-                    //     "conversationId": conversationid,
-                    //     "identified": "identified",
-                    //     "verified": buttonType,
-                    //     "message": null,
-                    //     "history_messages": historyMessages,
-                    //     "pre_intent": "verify"
-                    // }));
-                    
-                    console.log(' IDV data not found in redis: Created new verified data in redis:', conversationid + '_idv');
-                    // 返回失败消息
+                    console.log('IDV data not found in redis: Created new verified data in redis:', conversationid + '_idv');
                     if (typeof callback === 'function') {
                         callback({
                             status: 'error',
@@ -482,10 +576,10 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
                         });
                     }
                 }
-                
+
                 console.log('Processing callValidation to redis:', conversationid + '_idv');
-                
-                // 返回成功消息
+
+                // Success callback
                 if (typeof callback === 'function') {
                     callback({
                         status: 'success',
@@ -495,8 +589,6 @@ exports.configureSocketIo = function (server, pool, authenticateRequests) {
                 }
             } catch (error) {
                 console.error('Error processing callValidation:', error);
-                
-                // 返回失败消息
                 if (typeof callback === 'function') {
                     callback({
                         status: 'error',
